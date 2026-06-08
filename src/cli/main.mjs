@@ -75,6 +75,7 @@ export async function main(argv = process.argv.slice(2), runtime = {}) {
       entries,
       options,
       headExistsValue,
+      branch,
     );
     summary.warnings.push(...plan.warnings);
 
