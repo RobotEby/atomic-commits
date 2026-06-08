@@ -70,6 +70,7 @@ npm test
 - [Safety](docs/safety.md)
 - [Configuration](docs/configuration.md)
 - [Examples](docs/examples.md)
+- [Architecture](docs/architecture.md)
 
 ## Recovery
 
