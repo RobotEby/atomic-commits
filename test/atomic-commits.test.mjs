@@ -14,6 +14,10 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { main } from "../src/cli/main.mjs";
+import {
+  generateCommitMessage,
+  hasRevertSignals,
+} from "../src/messages/generate-message.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -126,6 +130,70 @@ test("prints help", async () => {
   assert.match(result.stdout, /Safe Atomic Commits/);
   assert.match(result.stdout, /--dry-run/);
 });
+
+test("revert inference only matches real revert signatures", () => {
+  assert.equal(
+    hasRevertSignals("+const recovery = 'do not revert user changes';\n"),
+    false,
+  );
+  assert.equal(
+    hasRevertSignals("+// Revert should be mentioned only in docs here\n"),
+    false,
+  );
+  assert.equal(hasRevertSignals("+This reverts commit abc123.\n"), true);
+  assert.equal(hasRevertSignals('+Revert "feat: add module"\n'), true);
+  assert.equal(hasRevertSignals("+revert: restore previous behavior\n"), true);
+});
+
+test("modular paths generate explicit refactor messages", () => {
+  const options = { allowScopes: false, scope: null };
+  const context = { structuralRefactor: true, branch: "refactor/modules" };
+
+  assert.equal(
+    generateCommitMessage(itemFor("scripts/atomic-commits.mjs"), "", options, context),
+    "refactor: simplify atomic commit CLI entrypoint",
+  );
+  assert.equal(
+    generateCommitMessage(itemFor("src/cli/args.mjs"), "", options, context),
+    "refactor: extract CLI argument parsing",
+  );
+  assert.equal(
+    generateCommitMessage(itemFor("src/git/staging.mjs"), "", options, context),
+    "refactor: extract Git staging helpers",
+  );
+  assert.equal(
+    generateCommitMessage(itemFor("src/safety/secrets.mjs"), "", options, context),
+    "refactor: extract secret scanning rules",
+  );
+  assert.equal(
+    generateCommitMessage(itemFor("docs/architecture.md"), "", options, context),
+    "docs: add architecture guide",
+  );
+  assert.equal(
+    generateCommitMessage(itemFor("test/atomic-commits.test.mjs"), "", options, context),
+    "test: add atomic commit CLI tests",
+  );
+});
+
+test("ordinary new source files remain feature messages outside refactor context", () => {
+  const message = generateCommitMessage(
+    itemFor("src/feature.js"),
+    "",
+    { allowScopes: false, scope: null },
+    { structuralRefactor: false, branch: "feature/new-module" },
+  );
+  assert.match(message, /^feat: /);
+});
+
+function itemFor(filePath) {
+  return {
+    id: filePath,
+    entries: [{ kind: "untracked", path: filePath, paths: [filePath] }],
+    paths: [filePath],
+    primaryPath: filePath,
+    kind: "untracked",
+  };
+}
 
 test("dry-run prints a plan without staging files", async () => {
   const repo = makeRepo();
@@ -388,6 +456,46 @@ test("group mode groups package manifest with lockfile", async () => {
     const result = await runCli(repo, ["--dry-run", "--group"]);
     assert.equal(result.status, 0, output(result));
     assert.match(result.stdout, /files: package\.json, package-lock\.json/);
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test("dry-run describes modular refactor files with specific messages", async () => {
+  const repo = makeRepo({ branch: "refactor/modular-cli-architecture" });
+  try {
+    write(
+      repo,
+      "scripts/atomic-commits.mjs",
+      "#!/usr/bin/env node\nconsole.log('atomic commits');\n",
+    );
+    git(repo, ["add", "scripts/atomic-commits.mjs"]);
+    git(repo, ["commit", "-m", "feat: add atomic commit CLI"]);
+
+    write(
+      repo,
+      "scripts/atomic-commits.mjs",
+      "#!/usr/bin/env node\nconst note = 'never revert working tree changes';\n",
+    );
+    write(repo, "src/cli/args.mjs", "export function parseArgs() {}\n");
+    write(repo, "src/git/staging.mjs", "export function stageItem() {}\n");
+    write(repo, "src/safety/secrets.mjs", "export function scanFileForSecrets() {}\n");
+    write(repo, "docs/architecture.md", "# Architecture\n");
+    write(repo, "test/atomic-commits.test.mjs", "import test from 'node:test';\n");
+
+    const result = await runCli(repo, ["--dry-run"]);
+    assert.equal(result.status, 0, output(result));
+    assert.match(
+      result.stdout,
+      /refactor: simplify atomic commit CLI entrypoint/,
+    );
+    assert.match(result.stdout, /refactor: extract CLI argument parsing/);
+    assert.match(result.stdout, /refactor: extract Git staging helpers/);
+    assert.match(result.stdout, /refactor: extract secret scanning rules/);
+    assert.match(result.stdout, /docs: add architecture guide/);
+    assert.match(result.stdout, /test: add atomic commit CLI tests/);
+    assert.doesNotMatch(result.stdout, /revert: revert atomic commits scripts changes/);
+    assert.doesNotMatch(result.stdout, /feat: add args cli/);
   } finally {
     cleanup(repo);
   }

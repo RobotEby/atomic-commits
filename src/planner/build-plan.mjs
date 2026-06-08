@@ -10,7 +10,13 @@ import { classifyEntry } from "../safety/classify-path.mjs";
 import { MAX_DIFF_BYTES } from "../shared/limits.mjs";
 import { groupCandidates } from "./grouping.mjs";
 
-export function buildProcessingPlan(repoRoot, entries, options, headExists) {
+export function buildProcessingPlan(
+  repoRoot,
+  entries,
+  options,
+  headExists,
+  branch = "",
+) {
   const ignored = [];
   const candidates = [];
 
@@ -38,11 +44,15 @@ export function buildProcessingPlan(repoRoot, entries, options, headExists) {
         classification: candidate.classification,
       }));
 
+  const messageContext = {
+    branch,
+    structuralRefactor: isStructuralRefactor(branch, grouped),
+  };
   const usedMessages = new Set();
   const items = grouped.map((group) => {
     const diff = getItemDiff(repoRoot, group, headExists);
     const message = ensureUniqueMessage(
-      generateCommitMessage(group, diff, options),
+      generateCommitMessage(group, diff, options, messageContext),
       usedMessages,
       options,
     );
@@ -62,6 +72,21 @@ export function buildProcessingPlan(repoRoot, entries, options, headExists) {
   }
 
   return { items, ignored, warnings };
+}
+
+export function isStructuralRefactor(branch, items) {
+  if (/\brefactor\b|refactor[/-]/i.test(branch)) {
+    return true;
+  }
+
+  const paths = items.flatMap((item) => item.paths);
+  const changesEntrypoint = paths.includes("scripts/atomic-commits.mjs");
+  const newSrcModules = items.filter(
+    (item) =>
+      item.entries?.some((entry) => ["added", "untracked"].includes(entry.kind)) &&
+      item.paths.some((filePath) => /^src\/.+\.mjs$/.test(filePath)),
+  );
+  return changesEntrypoint && newSrcModules.length >= 3;
 }
 
 export function getItemDiff(repoRoot, item, headExists) {
