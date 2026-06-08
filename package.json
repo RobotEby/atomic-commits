@@ -1,0 +1,12 @@
+{
+  "name": "atomic-commits",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "commit:atomic": "node scripts/atomic-commits.mjs",
+    "commit:atomic:auto": "node scripts/atomic-commits.mjs --yes",
+    "commit:atomic:dry": "node scripts/atomic-commits.mjs --dry-run"
+  }
+}
