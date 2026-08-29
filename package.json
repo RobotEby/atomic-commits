@@ -1,12 +1,21 @@
 {
   "name": "atomic-commits",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
+  "description": "Zero-dependency Node.js CLI for generating safe, reviewable, atomic Git commits from the current working tree.",
+  "license": "MIT",
   "scripts": {
     "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage",
+    "lint": "eslint .",
     "commit:atomic": "node scripts/atomic-commits.mjs",
     "commit:atomic:auto": "node scripts/atomic-commits.mjs --yes",
     "commit:atomic:dry": "node scripts/atomic-commits.mjs --dry-run"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "globals": "^15.11.0"
   }
 }

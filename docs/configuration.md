@@ -29,7 +29,8 @@ Safe Atomic Commits works without configuration. A repository may optionally add
 
 ## Supported Fields
 
-- `language`: `en` or `pt-BR`
+- `language`: only `"en"` is currently supported. The field exists for forward
+  compatibility with planned localization; any other value is rejected.
 - `maxFileSizeKb`: positive integer, defaults to `2048`
 - `allowScopes`: allow Conventional Commit scopes
 - `scope`: fixed scope used when scopes are enabled

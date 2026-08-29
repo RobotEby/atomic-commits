@@ -323,6 +323,19 @@ test("secret values fail check mode", async () => {
   }
 });
 
+test("--language rejects unimplemented locales instead of silently ignoring them", async () => {
+  const repo = makeRepo();
+  try {
+    write(repo, "app.js", "console.log(1);\n");
+    const result = await runCli(repo, ["--dry-run", "--language", "pt-BR"]);
+    assert.notEqual(result.status, 0);
+    assert.match(output(result), /--language/);
+    assert.match(output(result), /not (yet )?implemented|only supports en/i);
+  } finally {
+    cleanup(repo);
+  }
+});
+
 test("config customizes max file size and CLI flags override it", async () => {
   const repo = makeRepo();
   try {

@@ -1,2 +1,6 @@
-# Ignore temporary filestmp/
+# Ignore temporary files
+tmp/
 package-lock.json
+node_modules/
+coverage/
+*.log

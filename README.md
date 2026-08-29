@@ -1,8 +1,15 @@
 # Safe Atomic Commits
 
-Safe Atomic Commits is a zero-dependency Node.js CLI for creating safe, reviewable, atomic Git commits from the current working tree.
+![Node.js](https://img.shields.io/badge/node.js-18%2B-6DA55F?style=flat-square&logo=node.js&logoColor=white)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
-It is designed to be copied into any Git repository and run without stack-specific setup.
+Safe Atomic Commits is a zero-**runtime**-dependency Node.js CLI for creating
+safe, reviewable, atomic Git commits from the current working tree.
+
+It is designed to be copied into any Git repository and run with plain Node —
+no `npm install` is required to use the CLI itself. (Development tooling for
+this repository, such as ESLint, is a separate `devDependency` used only if
+you're contributing to this project.)
 
 ## What It Does
 
@@ -10,11 +17,15 @@ It is designed to be copied into any Git repository and run without stack-specif
 - Reads changed, added, deleted, renamed, and untracked files.
 - Expands untracked directories into individual files.
 - Filters generated, sensitive, binary, large, dump, and backup files.
-- Scans text files for common secret patterns.
-- Generates scope-free Conventional Commit messages by default.
+- Scans text files for common secret patterns (AWS keys, GitHub/Slack tokens,
+  JWT-like tokens, private key blocks, and common credential assignments).
+- Generates scope-free Conventional Commit messages by default, with
+  file-specific and structural-refactor heuristics.
 - Supports dry-run, check-only, interactive, and auto-accept modes.
 - Stages exactly the current file or safe group before committing.
 - Clears the Git index after each item.
+- Optionally groups obviously related pairs (`--group`), e.g. a package
+  manifest with its lockfile.
 
 ## What It Never Does
 
@@ -27,7 +38,9 @@ git checkout -- .
 git restore .
 ```
 
-It may clear the Git index/staging area as part of the safe commit flow.
+It may clear the Git index/staging area as part of the safe commit flow. This
+is verified in `test/atomic-commits.test.mjs` and by direct inspection of
+`src/git/git.mjs` (the only module that shells out to Git).
 
 ## Quick Start
 
@@ -43,7 +56,7 @@ Validate repository safety:
 node scripts/atomic-commits.mjs --check
 ```
 
-Run interactively:
+Run interactively (asks `[c]ommit / [e]dit / [s]kip / [q]uit` per item):
 
 ```bash
 node scripts/atomic-commits.mjs
@@ -55,14 +68,33 @@ Auto-accept generated commit messages:
 node scripts/atomic-commits.mjs --yes
 ```
 
-## NPM Scripts
+Equivalent `npm` scripts are also available if you copy `package.json`'s
+`scripts` block into the target repo: `npm run commit:atomic`,
+`npm run commit:atomic:auto`, `npm run commit:atomic:dry`.
+
+## NPM Scripts (for developing this tool)
+
+These are for developing the tool itself, not for running it against another
+repository (see Quick Start above for that).
 
 ```bash
-npm run commit:atomic
-npm run commit:atomic:auto
-npm run commit:atomic:dry
-npm test
+npm install        # installs ESLint devDependencies only
+npm run lint        # ESLint
+npm test            # node --test
+npm run test:coverage  # node --test with coverage report
 ```
+
+## Current Status
+
+- 22 automated tests, all passing (`npm test`).
+- ~82% line coverage / ~72% branch coverage as of the last coverage run
+  (`npm run test:coverage`); numbers will drift as the code changes and are
+  not enforced as a hard gate.
+- Zero runtime dependencies; two dev dependencies (`eslint`, `globals`) used
+  only for linting this repository.
+- `--language` currently only accepts `en`. Other locales are not implemented
+  yet — the flag exists as a placeholder for future localization and any
+  other value is rejected rather than silently ignored.
 
 ## Documentation
 
@@ -82,3 +114,7 @@ git reset --quiet --
 ```
 
 Do not use destructive recovery commands unless you intentionally want to discard your own changes.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

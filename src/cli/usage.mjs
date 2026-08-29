@@ -20,7 +20,7 @@ Safety opt-ins:
 Commit options:
   --group                        Group only obvious related file pairs
   --scope [name]                 Allow Conventional Commit scopes, optionally fixed
-  --language en|pt-BR            Output language for summaries and suggested subjects
+  --language en                   Reserved for future localization (only "en" is currently supported)
   --max-file-size-kb <number>    Override the large-file threshold
 
 Interactive actions:

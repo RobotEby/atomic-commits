@@ -31,8 +31,11 @@ export function mergeOptions(config, parsedArgs) {
     ...parsedArgs.flags,
   };
 
-  if (!["en", "pt-BR"].includes(options.language)) {
-    throw new CliError("--language must be en or pt-BR.", EXIT.invalidArgs);
+  if (options.language !== "en") {
+    throw new CliError(
+      "--language currently only supports en. pt-BR is planned but not yet implemented.",
+      EXIT.invalidArgs,
+    );
   }
   if (!Number.isInteger(options.maxFileSizeKb) || options.maxFileSizeKb <= 0) {
     throw new CliError(

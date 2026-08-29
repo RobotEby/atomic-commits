@@ -68,8 +68,9 @@ Use opt-ins only when you have reviewed the dry-run output. `--include-env` neve
 ```bash
 node scripts/atomic-commits.mjs --group
 node scripts/atomic-commits.mjs --scope api
-node scripts/atomic-commits.mjs --language en
-node scripts/atomic-commits.mjs --language pt-BR
 ```
 
 Default behavior is one file per commit, with renames as the explicit multi-path exception. `--group` only groups obvious related pairs.
+
+`--language` is reserved for future localization work; only `en` (the default) is
+currently accepted.

@@ -78,7 +78,7 @@ export function parseArgs(argv) {
       const value = argv[index + 1];
       if (!value || value.startsWith("-")) {
         throw new CliError(
-          "--language requires en or pt-BR.",
+          "--language requires a value (currently only en is supported).",
           EXIT.invalidArgs,
         );
       }
