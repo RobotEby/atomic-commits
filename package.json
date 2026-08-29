@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage",
     "lint": "eslint .",
     "commit:atomic": "node scripts/atomic-commits.mjs",
     "commit:atomic:auto": "node scripts/atomic-commits.mjs --yes",
