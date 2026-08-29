@@ -81,7 +81,7 @@ export function isPlaceholderSecretValue(value) {
   if (!normalized) {
     return true;
   }
-  if (normalized.length < 8 || /^[\[{(/]/.test(normalized)) {
+  if (normalized.length < 8 || /^[[{(/]/.test(normalized)) {
     return true;
   }
   return PLACEHOLDER_VALUES.some((placeholder) =>
