@@ -513,3 +513,154 @@ test("dry-run describes modular refactor files with specific messages", async ()
     cleanup(repo);
   }
 });
+
+// --- Initial staging is preserved -------------------------------------------
+
+function cachedDiff(repo, file) {
+  return git(repo, ["diff", "--cached", "--", file]).stdout;
+}
+
+test("skipped items keep their initial staging", async () => {
+  const repo = makeRepo();
+  try {
+    write(repo, "src/keep.js", "export const keep = true;\n");
+    git(repo, ["add", "src/keep.js"]);
+    const result = await runCli(repo, [], "s\n");
+    assert.equal(result.status, 0, output(result));
+    assert.equal(stagedFiles(repo), "src/keep.js");
+    assert.equal(commitCount(repo), 1);
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test("partially staged hunks are restored when the item is skipped", async () => {
+  const repo = makeRepo();
+  try {
+    write(repo, "src/part.js", "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
+    git(repo, ["add", "src/part.js"]);
+    git(repo, ["commit", "-m", "feat: add part"]);
+    write(repo, "src/part.js", "A\nb\nc\nd\ne\nf\ng\nh\ni\nj\n");
+    git(repo, ["add", "src/part.js"]);
+    write(repo, "src/part.js", "A\nb\nc\nd\ne\nf\ng\nh\ni\nJ\n");
+    const before = cachedDiff(repo, "src/part.js");
+    assert.match(before, /\+A/);
+    assert.doesNotMatch(before, /\+J/);
+
+    const result = await runCli(repo, [], "s\n");
+    assert.equal(result.status, 0, output(result));
+    assert.equal(cachedDiff(repo, "src/part.js"), before);
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test("a pre-staged file blocked by the secret scan stays staged", async () => {
+  const repo = makeRepo();
+  try {
+    write(repo, "token.txt", ["TOKEN=super", "secret", "value\n"].join("-"));
+    write(repo, "ok.txt", "fine\n");
+    git(repo, ["add", "token.txt"]);
+    const result = await runCli(repo, ["--yes"]);
+    assert.equal(commitCount(repo), 2, output(result));
+    assert.equal(stagedFiles(repo), "token.txt");
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test("aborting on a protected branch does not clear the user's staging", async () => {
+  const repo = makeRepo({ branch: "main" });
+  try {
+    write(repo, "src/app.js", "export const app = true;\n");
+    git(repo, ["add", "src/app.js"]);
+    const result = await runCli(repo, ["--yes"]);
+    assert.equal(result.status, 2, output(result));
+    assert.equal(stagedFiles(repo), "src/app.js");
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test("quitting early restores staging for items not yet committed", async () => {
+  const repo = makeRepo();
+  try {
+    write(repo, "src/one.js", "export const one = 1;\n");
+    write(repo, "src/two.js", "export const two = 2;\n");
+    git(repo, ["add", "src/one.js", "src/two.js"]);
+    const result = await runCli(repo, [], "q\n");
+    assert.equal(result.status, 0, output(result));
+    assert.equal(stagedFiles(repo), "src/one.js\nsrc/two.js");
+  } finally {
+    cleanup(repo);
+  }
+});
+
+// --- Secret scanning covers the whole file ----------------------------------
+
+const FAKE_AWS_KEY = ["AKIA", "QWERTYUIOP", "ASDFGH"].join("");
+
+test("secrets located after the first 256 KB are detected", async () => {
+  const repo = makeRepo();
+  try {
+    const filler = "// filler line that is not a secret\n".repeat(10000);
+    write(repo, "src/big.js", `${filler}const key = "${FAKE_AWS_KEY}";\n`);
+    const result = await runCli(repo, ["--check"]);
+    assert.equal(result.status, 2, output(result));
+    assert.match(output(result), /possible secret/);
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test("a placeholder value earlier in the file does not hide a real secret", async () => {
+  const repo = makeRepo();
+  try {
+    const body = ["PASSWORD=changeme\n", "PASSWORD=Xk29fjs0aQ1z\n"].join("");
+    write(repo, "config.txt", body);
+    const result = await runCli(repo, ["--check"]);
+    assert.equal(result.status, 2, output(result));
+    assert.match(output(result), /possible secret/);
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test("secrets inside a very long single line are detected", async () => {
+  const repo = makeRepo();
+  try {
+    const line = `${"x".repeat(1_200_000)} "${FAKE_AWS_KEY}" ${"y".repeat(5000)}`;
+    write(repo, "src/bundle.js", `${line}\n`);
+    const result = await runCli(repo, ["--check"]);
+    assert.equal(result.status, 2, output(result));
+    assert.match(output(result), /possible secret/);
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test("a private key block spanning scan chunks is detected", async () => {
+  const repo = makeRepo();
+  try {
+    const middle = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n".repeat(5000);
+    const pem = `-----BEGIN PRIVATE KEY-----\n${middle}-----END PRIVATE KEY-----\n`;
+    write(repo, "keys/server.txt", pem);
+    const result = await runCli(repo, ["--check"]);
+    assert.equal(result.status, 2, output(result));
+    assert.match(output(result), /possible secret/);
+  } finally {
+    cleanup(repo);
+  }
+});
+
+test("clean files larger than one scan chunk still commit", async () => {
+  const repo = makeRepo();
+  try {
+    write(repo, "src/clean.js", "export const clean = 1;\n".repeat(20000));
+    const result = await runCli(repo, ["--yes"]);
+    assert.equal(result.status, 0, output(result));
+    assert.equal(commitCount(repo), 2);
+  } finally {
+    cleanup(repo);
+  }
+});
