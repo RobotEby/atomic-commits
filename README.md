@@ -38,7 +38,8 @@ git checkout -- .
 git restore .
 ```
 
-It may clear the Git index/staging area as part of the safe commit flow. This
+It temporarily clears the Git index/staging area while committing each item, and
+puts your original staging back for anything it did not commit. This
 is verified in `test/atomic-commits.test.mjs` and by direct inspection of
 `src/git/git.mjs` (the only module that shells out to Git).
 

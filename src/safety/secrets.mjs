@@ -1,5 +1,13 @@
-import { TEXT_SCAN_BYTES } from "../shared/limits.mjs";
-import { readFileChunk } from "./binary.mjs";
+import { closeSync, openSync, readSync } from "node:fs";
+import {
+  SECRET_SCAN_CHUNK_BYTES,
+  SECRET_SCAN_MAX_LINE_BYTES,
+  SECRET_SCAN_OVERLAP_BYTES,
+} from "../shared/limits.mjs";
+
+const BINARY_PROBE_BYTES = 8192;
+const PRIVATE_KEY_BEGIN = /-----BEGIN [A-Z ]*PRIVATE KEY-----/i;
+const PRIVATE_KEY_END = /-----END [A-Z ]*PRIVATE KEY-----/i;
 
 const SECRET_PATTERNS = [
   { name: "AWS access key", pattern: /\bAKIA[0-9A-Z]{16}\b/ },
@@ -45,33 +53,89 @@ const PLACEHOLDER_VALUES = [
   "${",
 ];
 
+/**
+ * Scans the entire file (not just a prefix) for secrets. The file is streamed
+ * in chunks that are cut at newline boundaries, so memory stays bounded and no
+ * match is split across two chunks. Every match of every pattern is checked,
+ * so a placeholder value earlier in the file cannot hide a real one later.
+ */
 export function scanFileForSecrets(absolutePath) {
-  const buffer = readFileChunk(absolutePath, TEXT_SCAN_BYTES);
-  if (buffer.includes(0)) {
+  const fd = openSync(absolutePath, "r");
+  try {
+    const read = Buffer.alloc(SECRET_SCAN_CHUNK_BYTES);
+    let carry = Buffer.alloc(0);
+    let first = true;
+    let sawBegin = false;
+    let sawEnd = false;
+
+    const scan = (buffer) => {
+      const text = buffer.toString("utf8");
+      sawBegin ||= PRIVATE_KEY_BEGIN.test(text);
+      sawEnd ||= PRIVATE_KEY_END.test(text);
+      return findSecret(text);
+    };
+
+    while (true) {
+      const bytesRead = readSync(fd, read, 0, read.length, null);
+      if (bytesRead === 0) {
+        break;
+      }
+      if (first) {
+        first = false;
+        if (read.subarray(0, Math.min(bytesRead, BINARY_PROBE_BYTES)).includes(0)) {
+          return { detected: false };
+        }
+      }
+
+      let buffer = Buffer.concat([carry, read.subarray(0, bytesRead)]);
+      const lastNewline = buffer.lastIndexOf(0x0a);
+      if (lastNewline === -1 && buffer.length < SECRET_SCAN_MAX_LINE_BYTES) {
+        carry = buffer;
+        continue;
+      }
+
+      let scanEnd = lastNewline + 1;
+      if (lastNewline === -1) {
+        // Pathological single line (e.g. minified bundle): scan it in pieces,
+        // keeping an overlap so a token on the cut is seen whole next time.
+        scanEnd = buffer.length;
+        carry = buffer.subarray(Math.max(0, scanEnd - SECRET_SCAN_OVERLAP_BYTES));
+      } else {
+        carry = buffer.subarray(scanEnd);
+      }
+      const found = scan(buffer.subarray(0, scanEnd));
+      if (found) {
+        return found;
+      }
+      buffer = null;
+    }
+
+    if (carry.length > 0) {
+      const found = scan(carry);
+      if (found) {
+        return found;
+      }
+    }
+    if (sawBegin && sawEnd) {
+      return { detected: true, reason: "private key block" };
+    }
     return { detected: false };
+  } finally {
+    closeSync(fd);
   }
+}
 
-  const text = buffer.toString("utf8");
-  if (
-    /-----BEGIN [A-Z ]*PRIVATE KEY-----/i.test(text) &&
-    /-----END [A-Z ]*PRIVATE KEY-----/i.test(text)
-  ) {
-    return { detected: true, reason: "private key block" };
-  }
-
+function findSecret(text) {
   for (const secret of SECRET_PATTERNS) {
-    const match = secret.pattern.exec(text);
-    if (!match) {
-      continue;
+    const pattern = new RegExp(secret.pattern.source, "g");
+    for (const match of text.matchAll(pattern)) {
+      const value = secret.valueGroup ? match[secret.valueGroup] : match[0];
+      if (!isPlaceholderSecretValue(value)) {
+        return { detected: true, reason: secret.name };
+      }
     }
-    const value = secret.valueGroup ? match[secret.valueGroup] : match[0];
-    if (isPlaceholderSecretValue(value)) {
-      continue;
-    }
-    return { detected: true, reason: secret.name };
   }
-
-  return { detected: false };
+  return null;
 }
 
 export function isPlaceholderSecretValue(value) {

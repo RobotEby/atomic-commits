@@ -18,6 +18,8 @@ import {
   assertOnlyCurrentItemStaged,
   clearStaging,
   commitItem,
+  restoreStaging,
+  snapshotStaging,
   stageItem,
 } from "../git/staging.mjs";
 import { validateCommitMessage } from "../messages/validate-message.mjs";
@@ -37,6 +39,10 @@ import { CliError, EXIT } from "../shared/errors.mjs";
 export async function main(argv = process.argv.slice(2), runtime = {}) {
   let repoRoot = process.cwd();
   let headExistsValue = false;
+  // Tracks the user's initial index so it can be put back. `touched` stays
+  // false until this run first modifies the index, so aborts that happen
+  // before that point never clear the user's staging.
+  const staging = { snapshot: null, touched: false, summary: null };
   const originalCwd = process.cwd();
   try {
     if (runtime.cwd) {
@@ -81,7 +87,8 @@ export async function main(argv = process.argv.slice(2), runtime = {}) {
 
     printHeader(repoRoot, branch, headExistsValue, determineMode(options));
     printIgnoredFiles(plan.ignored);
-    await processEntries(repoRoot, plan, options, summary);
+    staging.summary = summary;
+    await processEntries(repoRoot, plan, options, summary, staging);
     printSummary(summary, plan);
 
     if (options.check && hasSafetyFailures(plan, summary, options)) {
@@ -99,7 +106,10 @@ export async function main(argv = process.argv.slice(2), runtime = {}) {
       console.error(error.message);
       if (error.exitCode !== EXIT.invalidArgs) {
         try {
-          clearStaging(repoRoot, headExistsValue || hasHead(repoRoot));
+          if (staging.touched) {
+            clearStaging(repoRoot, headExistsValue || hasHead(repoRoot));
+            restoreStaging(repoRoot, staging.snapshot, committedPaths(staging.summary));
+          }
         } catch {
           // Best-effort recovery only. Never touch the working tree.
         }
@@ -117,7 +127,7 @@ export async function main(argv = process.argv.slice(2), runtime = {}) {
   }
 }
 
-async function processEntries(repoRoot, plan, options, summary) {
+async function processEntries(repoRoot, plan, options, summary, staging) {
   if (options.dryRun) {
     summary.dryRunItems = plan.items.length;
     printDryRunPlan(plan);
@@ -132,6 +142,8 @@ async function processEntries(repoRoot, plan, options, summary) {
   if (plan.items.length === 0) {
     throw new CliError("No processable files.", EXIT.noFiles);
   }
+
+  staging.snapshot = snapshotStaging(repoRoot);
 
   const rl = options.yes
     ? null
@@ -169,6 +181,7 @@ async function processEntries(repoRoot, plan, options, summary) {
       }
 
       try {
+        staging.touched = true;
         clearStaging(repoRoot, hasHead(repoRoot));
         stageItem(repoRoot, item, options);
         assertOnlyCurrentItemStaged(repoRoot, item, options);
@@ -191,7 +204,17 @@ async function processEntries(repoRoot, plan, options, summary) {
     }
   } finally {
     rl?.close();
+    try {
+      restoreStaging(repoRoot, staging.snapshot, committedPaths(summary));
+      staging.touched = false;
+    } catch (error) {
+      summary.errors.push(`failed to restore initial staging: ${error.message}`);
+    }
   }
+}
+
+function committedPaths(summary) {
+  return (summary?.committed ?? []).flatMap(({ item }) => item.paths);
 }
 
 async function askAction(rl, item, message) {
