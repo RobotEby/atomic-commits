@@ -15,7 +15,8 @@ git restore .
 
 ## Staging Flow
 
-For each item, the CLI:
+Before the first item, the CLI snapshots your index (as a tree, so partial
+`git add -p` hunks are kept). For each item, the CLI:
 
 1. Clears staging without touching working tree content.
 2. Stages only the current file, rename pair, or approved group.
@@ -24,7 +25,18 @@ For each item, the CLI:
 5. Creates the commit.
 6. Clears staging again.
 
-If validation fails, the item is not committed and staging is cleared best-effort.
+If validation fails, the item is not committed. When the run ends (normally,
+by quitting, or after an error), staging is restored for every path that was
+staged before the run and was not committed by it. Aborts that happen before
+the index is first modified (for example a protected branch refusal) never
+touch it. Limitation: intent-to-add (`git add -N`) entries are not preserved.
+
+## Secret Scanning
+
+The whole file is scanned, streamed in chunks cut at line boundaries (very long
+single lines are scanned in overlapping pieces). Every match is checked, so a
+placeholder value earlier in a file cannot hide a real secret later in it.
+Files with a NUL byte in the first 8 KB are treated as binary and skipped.
 
 ## Ignored by Default
 
