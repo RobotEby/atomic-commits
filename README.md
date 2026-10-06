@@ -87,8 +87,8 @@ npm run test:coverage  # node --test with coverage report
 
 ## Current Status
 
-- 22 automated tests, all passing (`npm test`).
-- ~82% line coverage / ~72% branch coverage as of the last coverage run
+- Automated test suite covering the CLI end to end, run with `npm test`.
+- ~86% line coverage / ~76% branch coverage as of the last coverage run
   (`npm run test:coverage`); numbers will drift as the code changes and are
   not enforced as a hard gate.
 - Zero runtime dependencies; two dev dependencies (`eslint`, `globals`) used
